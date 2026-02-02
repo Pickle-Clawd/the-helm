@@ -53,15 +53,18 @@ export interface Session {
   displayName?: string;
   model?: string;
   totalTokens?: number;
+  contextTokens?: number;
   updatedAt?: number;
   sessionId?: string;
   lastChannel?: string;
+  abortedLastRun?: boolean;
 }
 
 export interface SessionMessage {
   role: 'user' | 'assistant' | 'system';
-  content: string | Array<{ type: string; text?: string }>;
-  timestamp?: string;
+  content: string | Array<{ type: string; text?: string; thinking?: string }>;
+  timestamp?: number;
+  model?: string;
 }
 
 export interface GatewayStats {

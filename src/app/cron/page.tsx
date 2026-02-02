@@ -44,20 +44,7 @@ import type { CronJob } from "@/lib/gateway-types";
 type FilterStatus = "all" | "enabled" | "disabled";
 type FilterTarget = "all" | "main" | "isolated";
 
-function getModelBadgeClass(model?: string): string {
-  if (!model) return "";
-  if (model.includes("opus")) return "bg-purple-500/15 text-purple-400 border-purple-500/25";
-  if (model.includes("sonnet")) return "bg-blue-500/15 text-blue-400 border-blue-500/25";
-  if (model.includes("gemini") && model.includes("flash")) return "bg-amber-500/15 text-amber-400 border-amber-500/25";
-  if (model.includes("gemini")) return "bg-emerald-500/15 text-emerald-400 border-emerald-500/25";
-  return "bg-muted text-muted-foreground";
-}
-
-function shortModel(model?: string): string {
-  if (!model) return "default";
-  // Strip provider prefix for cleaner display
-  return model.replace(/^(anthropic\/|google-gemini-cli\/|openai\/)/, "");
-}
+import { getModelBadgeClass, shortModel } from "@/lib/model-utils";
 
 export default function CronPage() {
   const { cronJobs, send, refreshCronJobs } = useGateway();
