@@ -2,7 +2,7 @@
 
 > 🤖 **AI-Generated Project** — This project was autonomously created by an AI. Built with love and lobster claws. 🦞
 
-A modern, polished dashboard for controlling an [OpenClaw](https://github.com/nichochar/openclaw) AI agent gateway.
+A modern, polished dashboard for controlling an [OpenClaw](https://github.com/openclaw/openclaw) AI agent gateway.
 
 ![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=nextdotjs)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-blue?logo=typescript)

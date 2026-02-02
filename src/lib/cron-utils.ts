@@ -40,6 +40,21 @@ export function cronExprToHuman(expr: string, tz?: string): string {
     return `Every day at ${formatTime(parseInt(hour), parseInt(minute))}${tzSuffix}`;
   }
 
+  // Every Nth day at specific time: 0 8 */3 * * or 0 8 3-30/3 * *
+  if (/^\d+$/.test(minute) && /^\d+$/.test(hour) && month === "*" && dayOfWeek === "*") {
+    const stepMatch = dayOfMonth.match(/^(?:\*|(\d+)-(\d+))\/(\d+)$/);
+    if (stepMatch) {
+      const n = parseInt(stepMatch[3]);
+      return `Every ${n} days at ${formatTime(parseInt(hour), parseInt(minute))}${tzSuffix}`;
+    }
+  }
+
+  // Specific day of month: 0 8 15 * *
+  if (/^\d+$/.test(minute) && /^\d+$/.test(hour) && /^\d+$/.test(dayOfMonth) && month === "*" && dayOfWeek === "*") {
+    const d = parseInt(dayOfMonth);
+    return `Monthly on the ${ordinal(d)} at ${formatTime(parseInt(hour), parseInt(minute))}${tzSuffix}`;
+  }
+
   // Weekly on specific day(s)
   if (/^\d+$/.test(minute) && /^\d+$/.test(hour) && dayOfMonth === "*" && month === "*" && dayOfWeek !== "*") {
     const days = parseDaysOfWeek(dayOfWeek);
@@ -48,12 +63,7 @@ export function cronExprToHuman(expr: string, tz?: string): string {
     }
   }
 
-  // Monthly on specific day
-  if (/^\d+$/.test(minute) && /^\d+$/.test(hour) && /^\d+$/.test(dayOfMonth) && month === "*" && dayOfWeek === "*") {
-    const d = parseInt(dayOfMonth);
-    return `Monthly on the ${ordinal(d)} at ${formatTime(parseInt(hour), parseInt(minute))}${tzSuffix}`;
-  }
-
+  // Every Nth day of month with step + specific day of week (complex)
   // Fall back to raw
   return expr + (tz ? ` (${tz})` : "");
 }
@@ -132,9 +142,9 @@ export function formatScheduleRaw(schedule: CronSchedule): string {
     case "cron":
       return schedule.expr + (schedule.tz ? ` (${schedule.tz})` : "");
     case "every":
-      return `every ${schedule.everyMs}ms`;
+      return `every ${formatMsToInterval(schedule.everyMs)}`;
     case "at":
-      return `at ${schedule.atMs}`;
+      return `at ${new Date(schedule.atMs).toLocaleString()}`;
     default:
       return JSON.stringify(schedule);
   }
@@ -180,6 +190,24 @@ export function formatCountdown(targetMs: number): string {
     return `in ${minutes}m`;
   }
   return `in ${seconds}s`;
+}
+
+/**
+ * Format relative time ago (e.g. "2h ago", "3d ago")
+ */
+export function formatTimeAgo(ms?: number): string {
+  if (!ms) return "";
+  const diff = Date.now() - ms;
+  if (diff < 0) return "";
+  const seconds = Math.floor(diff / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+
+  if (days > 0) return `${days}d ago`;
+  if (hours > 0) return `${hours}h ago`;
+  if (minutes > 0) return `${minutes}m ago`;
+  return "just now";
 }
 
 /**

@@ -33,9 +33,9 @@ import { toast } from "sonner";
 import {
   formatScheduleHuman,
   formatScheduleRaw,
-  getPayloadPreview,
   formatCountdown,
   formatTimestamp,
+  formatTimeAgo,
 } from "@/lib/cron-utils";
 import { CronJobDialog } from "./cron-job-dialog";
 import { RunHistoryDialog } from "./run-history-dialog";
@@ -43,6 +43,21 @@ import type { CronJob } from "@/lib/gateway-types";
 
 type FilterStatus = "all" | "enabled" | "disabled";
 type FilterTarget = "all" | "main" | "isolated";
+
+function getModelBadgeClass(model?: string): string {
+  if (!model) return "";
+  if (model.includes("opus")) return "bg-purple-500/15 text-purple-400 border-purple-500/25";
+  if (model.includes("sonnet")) return "bg-blue-500/15 text-blue-400 border-blue-500/25";
+  if (model.includes("gemini") && model.includes("flash")) return "bg-amber-500/15 text-amber-400 border-amber-500/25";
+  if (model.includes("gemini")) return "bg-emerald-500/15 text-emerald-400 border-emerald-500/25";
+  return "bg-muted text-muted-foreground";
+}
+
+function shortModel(model?: string): string {
+  if (!model) return "default";
+  // Strip provider prefix for cleaner display
+  return model.replace(/^(anthropic\/|google-gemini-cli\/|openai\/)/, "");
+}
 
 export default function CronPage() {
   const { cronJobs, send, refreshCronJobs } = useGateway();
@@ -81,7 +96,7 @@ export default function CronPage() {
         (j) =>
           j.name?.toLowerCase().includes(q) ||
           j.description?.toLowerCase().includes(q) ||
-          getPayloadPreview(j.payload).toLowerCase().includes(q)
+          (j.payload?.kind === "agentTurn" ? (j.payload as { message?: string }).message ?? "" : (j.payload as { text?: string }).text ?? "").toLowerCase().includes(q)
       );
     }
 
@@ -249,10 +264,11 @@ export default function CronPage() {
                     return (
                       <TableRow
                         key={job.id}
-                        className={!job.enabled ? "opacity-50" : undefined}
+                        className={`cursor-pointer hover:bg-muted/50 transition-colors ${!job.enabled ? "opacity-50" : ""}`}
+                        onClick={() => openEdit(job)}
                       >
                         {/* Enable/Disable toggle */}
-                        <TableCell>
+                        <TableCell onClick={(e) => e.stopPropagation()}>
                           <Switch
                             checked={job.enabled}
                             onCheckedChange={() => toggleJob(job)}
@@ -268,13 +284,14 @@ export default function CronPage() {
                               <Badge variant="outline" className="text-[10px] px-1 py-0 font-normal">
                                 {job.payload?.kind === "agentTurn" ? "agent" : "system"}
                               </Badge>
-                              {job.payload?.kind === "agentTurn" && (job.payload as { model?: string }).model ? (
-                                <Badge variant="secondary" className="text-[10px] px-1.5 py-0 font-mono font-normal">
-                                  {(job.payload as { model?: string }).model}
-                                </Badge>
-                              ) : (
-                                <span className="text-muted-foreground/60">default model</span>
-                              )}
+                              {(() => {
+                                const model = job.payload?.kind === "agentTurn" ? (job.payload as { model?: string }).model : undefined;
+                                return (
+                                  <Badge variant="outline" className={`text-[10px] px-1.5 py-0 font-mono font-normal ${getModelBadgeClass(model)}`}>
+                                    {shortModel(model)}
+                                  </Badge>
+                                );
+                              })()}
                             </div>
                           </div>
                         </TableCell>
@@ -305,7 +322,7 @@ export default function CronPage() {
                           </Badge>
                         </TableCell>
 
-                        {/* Last Run with color-coded status */}
+                        {/* Last Run with color-coded status + relative time */}
                         <TableCell>
                           <div className="flex items-center gap-1.5">
                             <span
@@ -317,9 +334,16 @@ export default function CronPage() {
                                     : "bg-muted-foreground/30"
                               }`}
                             />
-                            <span className="text-sm text-muted-foreground">
-                              {formatTimestamp(job.state?.lastRunAtMs)}
-                            </span>
+                            <div className="space-y-0.5">
+                              <div className="text-sm text-muted-foreground">
+                                {formatTimestamp(job.state?.lastRunAtMs)}
+                              </div>
+                              {job.state?.lastRunAtMs && (
+                                <div className="text-[11px] text-muted-foreground/60">
+                                  {formatTimeAgo(job.state.lastRunAtMs)}
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </TableCell>
 
@@ -338,7 +362,7 @@ export default function CronPage() {
                         </TableCell>
 
                         {/* Actions - always visible */}
-                        <TableCell className="text-right">
+                        <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-end gap-1">
                             <Tooltip>
                               <TooltipTrigger asChild>
