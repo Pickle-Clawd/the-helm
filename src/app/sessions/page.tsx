@@ -9,7 +9,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { RefreshCw, MessageSquare } from "lucide-react";
+import { RefreshCw, MessageSquare, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import type { Session } from "@/lib/gateway-types";
 
 function formatMs(ms?: number): string {
@@ -42,6 +43,18 @@ export default function SessionsPage() {
     setDetails(JSON.stringify(session, null, 2));
   };
 
+  const killSession = async (session: Session, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm(`Kill session "${session.label || session.key}"?`)) return;
+    try {
+      await send("sessions.delete", { sessionKey: session.key });
+      toast.success(`Killed ${session.label || session.key}`);
+      refreshSessions();
+    } catch (err) {
+      toast.error(`Failed: ${(err as Error).message}`);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -65,12 +78,13 @@ export default function SessionsPage() {
                 <TableHead>Model</TableHead>
                 <TableHead>Tokens</TableHead>
                 <TableHead>Updated</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {sessions.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground py-12">
+                  <TableCell colSpan={6} className="text-center text-muted-foreground py-12">
                     No active sessions
                   </TableCell>
                 </TableRow>
@@ -78,7 +92,7 @@ export default function SessionsPage() {
                 sessions.map((session) => (
                   <TableRow
                     key={session.key}
-                    className="cursor-pointer hover:bg-muted/50 transition-colors"
+                    className="cursor-pointer hover:bg-muted/50 transition-colors group"
                     onClick={() => openSession(session)}
                   >
                     <TableCell className="font-medium">
@@ -104,6 +118,17 @@ export default function SessionsPage() {
                     </TableCell>
                     <TableCell className="text-muted-foreground text-sm">
                       {formatMs(session.updatedAt)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive hover:bg-destructive/10"
+                        onClick={(e) => killSession(session, e)}
+                        title="Kill session"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))
