@@ -1,0 +1,6 @@
+/* Reef theme — Deep ocean with coral highlights */
+
+/* Additional reef-specific ambient styling via CSS */
+[data-theme="reef"] .theme-ambient-layer {
+  /* Theme ambient layer is styled by the particle renderer */
+}

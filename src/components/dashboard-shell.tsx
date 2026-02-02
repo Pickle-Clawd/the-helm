@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Sidebar } from "./sidebar";
 import { Header } from "./header";
-import { ThemeAmbient } from "./theme-ambient";
+import { ThemeParticles } from "./theme-particles";
 import { cn } from "@/lib/utils";
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
@@ -12,7 +12,14 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-background">
       <div className="gradient-bg" />
-      <ThemeAmbient />
+      {/* Theme ambient layer — themes can target this via .theme-ambient-layer in styles.css */}
+      <div
+        className="theme-ambient-layer fixed inset-0 pointer-events-none overflow-hidden"
+        style={{ zIndex: 0 }}
+        aria-hidden
+      >
+        <ThemeParticles />
+      </div>
       <Sidebar collapsed={collapsed} onToggle={() => setCollapsed(!collapsed)} />
       <div className={cn("transition-all duration-300", collapsed ? "ml-16" : "ml-60")}>
         <Header />

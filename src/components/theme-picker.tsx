@@ -2,7 +2,6 @@
 
 import { Palette } from "lucide-react";
 import { useTheme } from "@/lib/theme-context";
-import { themes } from "@/lib/themes";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -17,7 +16,7 @@ interface ThemePickerProps {
 }
 
 export function ThemePicker({ collapsed }: ThemePickerProps) {
-  const { theme, setTheme } = useTheme();
+  const { theme, themes, setTheme } = useTheme();
   const currentTheme = themes.find((t) => t.id === theme);
 
   return (
@@ -33,7 +32,9 @@ export function ThemePicker({ collapsed }: ThemePickerProps) {
         >
           <Palette className="w-4 h-4 shrink-0" />
           {!collapsed && (
-            <span className="text-xs truncate">{currentTheme?.name ?? "Theme"}</span>
+            <span className="text-xs truncate">
+              {currentTheme?.name ?? "Theme"}
+            </span>
           )}
         </Button>
       </DropdownMenuTrigger>
@@ -48,7 +49,7 @@ export function ThemePicker({ collapsed }: ThemePickerProps) {
             )}
           >
             <div className="flex gap-1">
-              {t.previewColors.map((color, i) => (
+              {t.preview.map((color, i) => (
                 <span
                   key={i}
                   className="w-3 h-3 rounded-full border border-white/20"
@@ -58,7 +59,9 @@ export function ThemePicker({ collapsed }: ThemePickerProps) {
             </div>
             <div className="flex flex-col">
               <span className="text-sm font-medium">{t.name}</span>
-              <span className="text-xs text-muted-foreground">{t.description}</span>
+              <span className="text-xs text-muted-foreground">
+                {t.description}
+              </span>
             </div>
           </DropdownMenuItem>
         ))}
