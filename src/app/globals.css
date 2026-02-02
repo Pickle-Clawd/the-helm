@@ -200,6 +200,51 @@
   will-change: transform, opacity;
 }
 
+/* ── react-grid-layout overrides ───────────────────────── */
+
+.react-grid-item.react-grid-placeholder {
+  background: var(--primary) !important;
+  opacity: 0.12 !important;
+  border-radius: 0.75rem !important;
+  border: 2px dashed var(--primary) !important;
+}
+
+.react-grid-item > .react-resizable-handle {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.widget-grid-editing .react-grid-item > .react-resizable-handle {
+  opacity: 0.5;
+}
+
+.widget-grid-editing .react-grid-item:hover > .react-resizable-handle {
+  opacity: 1;
+}
+
+.react-grid-item > .react-resizable-handle::after {
+  border-right-color: var(--primary) !important;
+  border-bottom-color: var(--primary) !important;
+}
+
+.react-grid-item.react-draggable-dragging {
+  z-index: 100;
+  opacity: 0.9;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+}
+
+.react-grid-item {
+  transition: all 200ms ease;
+}
+
+.react-grid-item.cssTransforms {
+  transition-property: transform, width, height;
+}
+
+.react-grid-item.react-draggable-dragging {
+  transition: none;
+}
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 6px;
