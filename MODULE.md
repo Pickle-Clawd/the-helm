@@ -1,12 +1,12 @@
 # MODULE.md — Widget Module System
 
-This document explains how to create custom widgets (modules) for The Helm dashboard. It's designed so an AI coding agent (like Claude Code) or a human developer can create a new widget from scratch in under 5 minutes.
+How to create widget modules for The Helm dashboard. Read this entire file before writing any code.
 
 ---
 
 ## Understanding OpenClaw
 
-The Helm is a dashboard for **OpenClaw** — an open-source AI agent gateway. Before building widgets, you need to understand what OpenClaw is and what data it exposes.
+The Helm is a dashboard for **OpenClaw** — an open-source AI agent gateway. You need to understand what OpenClaw is and what data it exposes.
 
 ### What is OpenClaw?
 
@@ -20,15 +20,15 @@ OpenClaw is a local daemon that acts as a gateway between AI models (Claude, GPT
 
 ### The Gateway WebSocket
 
-The Helm connects to the OpenClaw gateway via a **WebSocket** using **JSON-RPC 2.0**. When the user enters their gateway URL (e.g. `ws://localhost:18789`) and token, The Helm opens a persistent connection and can:
+The Helm connects to the OpenClaw gateway via a **WebSocket** using **JSON-RPC 2.0**. When the user enters their gateway URL and token, The Helm opens a persistent connection and can:
 
 1. **Subscribe to real-time updates** — Session changes, cron job runs, connection status
 2. **Query data** — List sessions, cron jobs, config
 3. **Send commands** — Run cron jobs, manage sessions, update config
 
-All gateway data in The Helm flows through the `useGateway()` hook, which maintains the WebSocket connection and provides reactive state.
+All gateway data flows through the `useGateway()` hook, which maintains the WebSocket connection and provides reactive state.
 
-### Data Model Deep Dive
+### Data Model
 
 #### Sessions
 
@@ -49,68 +49,71 @@ interface Session {
 }
 ```
 
-**Widget ideas:** Token usage tracker, session timeline, model distribution chart, active conversation monitor.
-
 #### Cron Jobs
 
 Cron jobs are scheduled tasks. They can run on fixed intervals, cron expressions, or one-shot at a specific time.
 
 ```tsx
-// Schedule types
 type CronSchedule =
   | { kind: "at"; atMs: number }                           // One-shot at timestamp
   | { kind: "every"; everyMs: number; anchorMs?: number }  // Recurring interval
   | { kind: "cron"; expr: string; tz?: string };           // Cron expression
 
-// Payload types — what happens when the job fires
 type CronPayload =
   | { kind: "systemEvent"; text: string }                   // Inject text into main session
-  | { kind: "agentTurn"; message: string; model?: string; /*...*/ }; // Spawn isolated agent run
+  | { kind: "agentTurn"; message: string; model?: string }; // Spawn isolated agent run
 
 interface CronJob {
   id: string;
   name: string;
   description?: string;
   enabled: boolean;
-  deleteAfterRun?: boolean;     // One-shot jobs that self-delete
+  deleteAfterRun?: boolean;
   createdAtMs: number;
   updatedAtMs: number;
   schedule: CronSchedule;
-  sessionTarget: "main" | "isolated";  // Where the job runs
-  wakeMode: "next-heartbeat" | "now";  // When to wake the agent
+  sessionTarget: "main" | "isolated";
+  wakeMode: "next-heartbeat" | "now";
   payload: CronPayload;
   state: {
-    lastRunAtMs?: number;       // When it last ran
-    lastRunStatus?: string;     // "ok" | "error" | etc.
-    nextRunAtMs?: number;       // When it will run next
+    lastRunAtMs?: number;
+    lastRunStatus?: string;
+    nextRunAtMs?: number;
   };
 }
 ```
 
-**Widget ideas:** Cron timeline/calendar view, next-run countdown, job run history, failed jobs alert panel.
-
 #### Gateway Stats
-
-Aggregate stats about the running gateway.
 
 ```tsx
 interface GatewayStats {
-  activeSessions: number;    // Currently active sessions
-  totalCronJobs: number;     // Total cron jobs configured
-  uptime: number;            // Gateway uptime in seconds
-  connected: boolean;        // Whether The Helm is connected
+  activeSessions: number;
+  totalCronJobs: number;
+  uptime: number;          // seconds
+  connected: boolean;
+}
+```
+
+#### Session Messages
+
+When fetching history via `sessions.history`:
+
+```tsx
+interface SessionMessage {
+  role: "user" | "assistant" | "system";
+  content: string | Array<{ type: string; text?: string; thinking?: string }>;
+  timestamp?: number;
+  model?: string;
 }
 ```
 
 #### Gateway Config
 
-The raw gateway configuration (JSON). Contains agent definitions, channel configs, tool policies, and more. Access via `rawConfig` (string) from `useGateway()`.
-
-**Widget ideas:** Config diff viewer, agent list, channel status panel, tool inventory.
+The raw gateway configuration (JSON string). Contains agent definitions, channel configs, tool policies, and more. Access via `rawConfig` from `useGateway()`.
 
 ### Available RPC Methods
 
-These methods can be called via `send(method, params)` from the `useGateway()` hook:
+Called via `send(method, params)` from the `useGateway()` hook:
 
 | Method | Params | Returns | Description |
 |--------|--------|---------|-------------|
@@ -124,25 +127,10 @@ These methods can be called via `send(method, params)` from the `useGateway()` h
 | `sessions.history` | `{ sessionKey, limit? }` | `Message[]` | Get message history |
 | `sessions.send` | `{ sessionKey, message }` | `{ ok }` | Send a message to a session |
 | `config.get` | `{}` | `object` | Get full gateway config |
-| `config.patch` | `{ patch }` | `{ ok }` | Patch config (triggers restart) |
+| `config.patch` | `{ patch }` | `{ ok }` | Patch config (triggers restart!) |
 | `status` | `{}` | `object` | Get gateway status |
 
-> **Note:** RPC methods may evolve with OpenClaw versions. If a method returns an error, handle it gracefully.
-
-### Session Message Format
-
-When fetching history via `sessions.history`, messages look like:
-
-```tsx
-interface SessionMessage {
-  role: "user" | "assistant" | "system";
-  content: string | Array<{ type: string; text?: string; thinking?: string }>;
-  timestamp?: number;
-  model?: string;
-}
-```
-
-**Widget ideas:** Chat history viewer, conversation search, message analytics.
+> RPC methods may evolve with OpenClaw versions. Handle errors gracefully.
 
 ---
 
@@ -156,77 +144,41 @@ src/
 │   └── gateway-context.tsx   ← Gateway data hook (useGateway)
 ├── components/
 │   ├── widgets/              ← Widget components live here
-│   │   ├── stats-grid.tsx
-│   │   ├── cron-summary.tsx
-│   │   ├── active-sessions.tsx
-│   │   ├── system-health.tsx
-│   │   └── welcome.tsx
-│   ├── widget-wrapper.tsx    ← Chrome/frame around each widget
+│   ├── widget-wrapper.tsx    ← Chrome/frame around each widget (auto-applied)
 │   ├── widget-grid.tsx       ← Main grid layout engine
 │   └── widget-catalog.tsx    ← "Add Widget" picker dialog
 ```
 
-The homepage (`src/app/page.tsx`) imports `register-widgets.ts` then renders `<WidgetGrid />`. That's it.
-
 ---
 
-## Quick Start: Create a Widget in 3 Steps
+## Creating a Widget
 
-### Step 1: Create the Component
+### Two things are required:
 
-Create a new file in `src/components/widgets/`. Your component receives no special props — just render your UI. Use `useGateway()` to access live gateway data.
+1. **A component** in `src/components/widgets/` — a React component with `"use client"` directive
+2. **A registration call** in `src/lib/register-widgets.ts` — tells the system about your widget
 
-```tsx
-// src/components/widgets/my-widget.tsx
-"use client";
-
-import { useGateway } from "@/lib/gateway-context";
-
-export function MyWidget() {
-  const { sessions, cronJobs, stats, status } = useGateway();
-
-  return (
-    <div className="p-4 h-full">
-      <p className="text-sm text-muted-foreground">
-        {sessions.length} sessions running
-      </p>
-    </div>
-  );
-}
-```
-
-### Step 2: Register It
-
-Add your widget to `src/lib/register-widgets.ts`:
+### Registration API
 
 ```tsx
 import { registerWidget } from "./widget-registry";
-import { Zap } from "lucide-react";  // pick any lucide icon
-import { MyWidget } from "@/components/widgets/my-widget";
 
 registerWidget({
-  id: "my-widget",                    // unique ID (kebab-case)
-  name: "My Widget",                  // display name in catalog
-  description: "Does something cool", // shown in the widget picker
-  icon: Zap,                          // lucide-react icon component
-  category: "monitoring",             // "monitoring" | "data" | "utility" | "custom"
-  defaultSize: { w: 12, h: 8 },      // grid units (24 columns, ~30px rows)
-  minSize: { w: 6, h: 4 },           // minimum resize dimensions
-  component: MyWidget,                // your component
+  id: string,                    // Unique ID, kebab-case
+  name: string,                  // Display name shown in catalog
+  description: string,           // One-line description for the widget picker
+  icon: LucideIcon,              // Any icon from lucide-react
+  category: "monitoring" | "data" | "utility" | "custom",
+  defaultSize: { w: number, h: number },  // Initial grid size
+  minSize: { w: number, h: number },      // Minimum resize dimensions
+  maxSize?: { w: number, h: number },     // Optional maximum
+  component: ComponentType,               // Your React component
 });
 ```
 
-### Step 3: Done
+### Component Props
 
-That's it. Your widget appears in the "Add Widget" catalog, ready to be dragged onto the dashboard.
-
----
-
-## Widget Component Contract
-
-### Props
-
-Your component receives these props (via `WidgetComponentProps`), but you can ignore them if you don't need them:
+Your component receives these props (optional to use):
 
 ```tsx
 interface WidgetComponentProps {
@@ -235,289 +187,100 @@ interface WidgetComponentProps {
 }
 ```
 
-### Layout Rules
-
-- Your component fills the **entire widget body** (below the header bar)
-- The header bar (icon, title, drag handle, remove button) is added automatically by `WidgetWrapper`
-- Use `h-full` on your root element to fill the available space
-- Use `overflow-hidden` or `ScrollArea` for scrollable content
-- The widget can be **any size** — design responsively
-
-### Styling
-
-- Use Tailwind CSS classes with **theme tokens** (not hardcoded colors):
-  - `bg-card`, `bg-muted`, `text-foreground`, `text-muted-foreground`
-  - `border-border`, `bg-primary`, `text-primary`
-- Existing card pattern: `border-border/50 bg-card/80 backdrop-blur-sm`
-- Item rows: `p-2.5 rounded-lg bg-muted/50`
-- The widget wrapper already provides the card frame — don't add another Card inside
-
-### Available UI Components
-
-From `src/components/ui/` (shadcn/ui):
-
-- `Badge` — status labels
-- `Button` — actions
-- `Card` — sub-cards (if needed)
-- `ScrollArea` — scrollable regions
-- `Tabs` — tabbed views
-- `Tooltip` — hover info
-- `Dialog` — modals
-- `Progress` — progress bars
-- `Select` — dropdowns
-
----
-
-## Accessing Gateway Data
-
-Use the `useGateway()` hook to access all live data:
+### Accessing Data
 
 ```tsx
 import { useGateway } from "@/lib/gateway-context";
 
 const {
-  status,       // "connected" | "disconnected" | "connecting" | "error"
-  stats,        // { activeSessions, totalCronJobs, uptime, connected }
-  cronJobs,     // CronJob[] — all cron jobs with schedule, status, last run
-  sessions,     // Session[] — active sessions with model, tokens, channel
-  rawConfig,    // string — raw gateway config JSON
-  config,       // { url, token } — gateway connection info
-  send,         // (method, params?) => Promise — send RPC to gateway
-  refreshCronJobs,   // () => void — force refresh
-  refreshSessions,   // () => void
-  refreshStats,      // () => void
-  refreshConfig,     // () => void
+  status,             // "connected" | "disconnected" | "connecting" | "error"
+  stats,              // GatewayStats
+  cronJobs,           // CronJob[]
+  sessions,           // Session[]
+  rawConfig,          // string (full gateway config JSON)
+  config,             // { url, token }
+  send,               // (method, params?) => Promise<unknown>
+  refreshCronJobs,    // () => void
+  refreshSessions,    // () => void
+  refreshStats,       // () => void
+  refreshConfig,      // () => void
 } = useGateway();
 ```
 
-### Key Types
+---
 
-```tsx
-interface CronJob {
-  id: string;
-  name: string;
-  enabled: boolean;
-  schedule: CronSchedule;     // { kind: "cron", expr } | { kind: "every", everyMs } | { kind: "at", atMs }
-  sessionTarget: "main" | "isolated";
-  payload: CronPayload;       // { kind: "systemEvent", text } | { kind: "agentTurn", message, ... }
-  state: {
-    lastRunAtMs?: number;
-    lastRunStatus?: string;
-    nextRunAtMs?: number;
-  };
-}
+## Rules
 
-interface Session {
-  key: string;
-  kind?: string;
-  channel?: string;
-  label?: string;
-  model?: string;
-  totalTokens?: number;
-  contextTokens?: number;
-  updatedAt?: number;
-}
+### Layout
+- Root element **must** have `h-full` — widget fills its container
+- The header bar (icon, name, drag handle, remove button) is added automatically — don't recreate it
+- Use `ScrollArea` from `@/components/ui/scroll-area` for scrollable content
+- Design for `minSize` first, then enhance for larger sizes
 
-interface GatewayStats {
-  activeSessions: number;
-  totalCronJobs: number;
-  uptime: number;
-  connected: boolean;
-}
-```
+### Styling
+- Use **theme tokens only** — no hardcoded colors
+  - Backgrounds: `bg-card`, `bg-muted`, `bg-primary`, `bg-background`
+  - Text: `text-foreground`, `text-muted-foreground`, `text-primary`
+  - Borders: `border-border`
+  - Status: `text-success`, `text-warning`, `text-destructive`
+- The widget wrapper provides the card frame — don't wrap in another Card
+- Common row pattern: `p-2.5 rounded-lg bg-muted/50`
 
-### Sending RPC Commands
+### Available UI Components (shadcn/ui)
 
-Use `send()` to call gateway methods:
+Import from `@/components/ui/`:
+`Badge`, `Button`, `Card`, `ScrollArea`, `Tabs`, `Tooltip`, `Dialog`, `Progress`, `Select`, `Separator`, `Switch`, `Label`, `Popover`, `AlertDialog`, `Collapsible`
 
-```tsx
-// List cron jobs
-const jobs = await send("cron.list", {});
+### Grid System
 
-// Get session history
-const history = await send("sessions.history", { sessionKey: "main", limit: 10 });
+24-column grid, ~30px row height.
 
-// Run a cron job
-await send("cron.run", { jobId: "some-job-id" });
-```
+| Columns | Width | Use Case |
+|---------|-------|----------|
+| 6 | ¼ page | Compact stat |
+| 12 | ½ page | Standard widget |
+| 18 | ¾ page | Wide content |
+| 24 | Full | Full-width panel |
+
+| Rows | Height | Use Case |
+|------|--------|----------|
+| 4 | ~120px | Compact |
+| 6 | ~180px | Small card |
+| 8 | ~240px | Medium |
+| 10 | ~300px | List with scroll |
+| 14 | ~420px | Large panel |
+
+### Categories
+
+| Category | For |
+|----------|-----|
+| `"monitoring"` | Real-time status, metrics, health |
+| `"data"` | Lists, tables, data views |
+| `"utility"` | Tools, helpers, non-data widgets |
+| `"custom"` | Everything else |
 
 ---
 
-## Grid System
+## Tech Stack
 
-The dashboard uses a **24-column grid** with ~30px row height:
-
-| Size | Columns | Rough Width | Good For |
-|------|---------|-------------|----------|
-| Small | 6 | ¼ page | Single stat, icon |
-| Medium | 12 | ½ page | Lists, charts |
-| Large | 18 | ¾ page | Wide tables |
-| Full | 24 | Full width | Dashboards, timelines |
-
-Row heights:
-- `h: 4` ≈ 120px — compact stat
-- `h: 6` ≈ 180px — card with a few items
-- `h: 8` ≈ 240px — medium content
-- `h: 10` ≈ 300px — scrollable list
-- `h: 14` ≈ 420px — large panel
-
-### Size Tips
-
-- `defaultSize` — what the widget starts at when added
-- `minSize` — smallest it can be resized to
-- `maxSize` — (optional) largest it can grow
-- Design for the `minSize` first, then make it look better at larger sizes
+- **Next.js 16** (App Router) / **React 19**
+- **Tailwind CSS v4** — theme via CSS variables
+- **shadcn/ui** — Radix-based component library
+- **lucide-react** — Icons
+- **react-grid-layout v2** — Drag/resize grid
+- **recharts** — Charts (already installed)
+- **Themes** — folder-based in `public/themes/`, CSS variables in `src/app/globals.css`
 
 ---
 
-## Widget Categories
+## Checklist
 
-| Category | Description | Examples |
-|----------|-------------|---------|
-| `"monitoring"` | Real-time status & metrics | Health, stats, connection |
-| `"data"` | Lists & data views | Cron jobs, sessions, logs |
-| `"utility"` | Tools & helpers | Welcome, notes, clock |
-| `"custom"` | User-created widgets | Anything else |
-
----
-
-## Example: Full Widget
-
-Here's a complete example — a "Token Usage" widget showing per-session token consumption:
-
-```tsx
-// src/components/widgets/token-usage.tsx
-"use client";
-
-import { useGateway } from "@/lib/gateway-context";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Badge } from "@/components/ui/badge";
-
-export function TokenUsageWidget() {
-  const { sessions } = useGateway();
-
-  const sorted = [...sessions]
-    .filter((s) => s.totalTokens && s.totalTokens > 0)
-    .sort((a, b) => (b.totalTokens ?? 0) - (a.totalTokens ?? 0));
-
-  const total = sorted.reduce((sum, s) => sum + (s.totalTokens ?? 0), 0);
-
-  return (
-    <div className="flex flex-col h-full">
-      <div className="px-4 pt-1 pb-2 flex items-center justify-between">
-        <p className="text-xs text-muted-foreground">
-          {total.toLocaleString()} total tokens
-        </p>
-      </div>
-      <ScrollArea className="flex-1 px-4 pb-4">
-        <div className="space-y-2">
-          {sorted.map((session) => {
-            const pct = total > 0 ? ((session.totalTokens ?? 0) / total) * 100 : 0;
-            return (
-              <div
-                key={session.key}
-                className="p-2.5 rounded-lg bg-muted/50 space-y-1"
-              >
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium truncate">
-                    {session.label || session.key.split(":").pop()}
-                  </p>
-                  <Badge variant="outline" className="text-xs font-mono">
-                    {(session.totalTokens ?? 0).toLocaleString()}
-                  </Badge>
-                </div>
-                <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-primary rounded-full transition-all"
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </ScrollArea>
-    </div>
-  );
-}
-```
-
-Register it:
-
-```tsx
-// In src/lib/register-widgets.ts
-import { Coins } from "lucide-react";
-import { TokenUsageWidget } from "@/components/widgets/token-usage";
-
-registerWidget({
-  id: "token-usage",
-  name: "Token Usage",
-  description: "Token consumption breakdown by session",
-  icon: Coins,
-  category: "monitoring",
-  defaultSize: { w: 12, h: 10 },
-  minSize: { w: 6, h: 6 },
-  component: TokenUsageWidget,
-});
-```
-
----
-
-## Tech Stack Reference
-
-- **Framework**: Next.js 16 (App Router)
-- **React**: 19
-- **Styling**: Tailwind CSS v4
-- **UI Components**: shadcn/ui (Radix primitives)
-- **Icons**: lucide-react
-- **Grid**: react-grid-layout v2
-- **Charts**: recharts (already installed)
-- **Theme**: CSS variables — see `src/app/globals.css` and `public/themes/`
-
----
-
-## Widget Ideas
-
-Here are some widget concepts that could be built using the available data:
-
-**Monitoring:**
-- Token usage breakdown (per-session bar chart)
-- Model distribution (pie chart of which models are active)
-- Connection uptime tracker (historical uptime percentage)
-- Cost estimator (token counts × model pricing)
-
-**Data:**
-- Cron calendar (visual timeline of scheduled jobs)
-- Next run countdown (live timers for upcoming cron jobs)
-- Failed jobs alert panel (highlight jobs with error status)
-- Session history viewer (browse past conversations)
-- Config diff viewer (show recent config changes)
-
-**Utility:**
-- Quick actions panel (buttons to run cron jobs, restart gateway)
-- Markdown notepad (scratchpad that persists in localStorage)
-- Clock / timezone display
-- Changelog / release notes viewer
-- Keyboard shortcut reference
-
-**Advanced:**
-- Agent chat widget (send messages to sessions directly from dashboard)
-- Log stream (real-time gateway event feed)
-- Custom API widget (fetch and display data from any URL)
-- Cron job builder (create/edit cron jobs with a visual editor)
-
----
-
-## Checklist for New Widgets
-
-- [ ] Create component in `src/components/widgets/`
-- [ ] Add `"use client"` directive at top
-- [ ] Use `useGateway()` for data (if needed)
-- [ ] Use theme tokens for colors (no hardcoded values)
-- [ ] Root element has `h-full` for proper sizing
+- [ ] Component in `src/components/widgets/` with `"use client"`
+- [ ] Registered in `src/lib/register-widgets.ts`
+- [ ] Unique kebab-case `id`
+- [ ] `h-full` on root element
+- [ ] Theme tokens only (no hardcoded colors)
 - [ ] Scrollable content uses `ScrollArea`
-- [ ] Register in `src/lib/register-widgets.ts`
-- [ ] Pick a unique `id` (kebab-case)
-- [ ] Set sensible `defaultSize` and `minSize`
-- [ ] Pick an appropriate `category`
-- [ ] Test at minimum size to ensure it doesn't break
+- [ ] Sensible `defaultSize` and `minSize`
+- [ ] Works at minimum size without breaking
+- [ ] Errors handled gracefully (gateway disconnected, empty data, etc.)
