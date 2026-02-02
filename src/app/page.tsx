@@ -4,8 +4,8 @@ import { useGateway } from "@/lib/gateway-context";
 import { StatsCard } from "@/components/stats-card";
 import { StatusBadge } from "@/components/status-badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Badge } from "@/components/ui/badge";
 import { Activity, Clock, MessageSquare, Wifi, Heart } from "lucide-react";
 
 function formatUptime(seconds: number): string {
@@ -18,31 +18,23 @@ function formatUptime(seconds: number): string {
   return `${m}m`;
 }
 
-function formatTime(ts?: string): string {
-  if (!ts) return "—";
+function formatMs(ms?: number): string {
+  if (!ms) return "—";
   try {
-    const date = new Date(ts);
-    return date.toLocaleString(undefined, {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
+    return new Date(ms).toLocaleString(undefined, {
+      month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
     });
-  } catch {
-    return ts;
-  }
+  } catch { return "—"; }
+}
+
+function shortKey(key: string): string {
+  const parts = key.split(":");
+  if (parts.length <= 2) return key;
+  return parts.slice(2).join(":");
 }
 
 export default function OverviewPage() {
   const { stats, cronJobs, sessions, status } = useGateway();
-
-  // Get recent cron runs from all jobs
-  const recentRuns = cronJobs
-    .flatMap((job) =>
-      (job.history || []).map((h) => ({ ...h, jobName: job.name }))
-    )
-    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-    .slice(0, 8);
 
   return (
     <div className="space-y-6">
@@ -84,41 +76,44 @@ export default function OverviewPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Recent Cron Runs */}
+        {/* Cron Jobs Summary */}
         <Card className="border-border/50 bg-card/80 backdrop-blur-sm">
           <CardHeader>
-            <CardTitle className="text-lg">Recent Cron Runs</CardTitle>
-            <CardDescription>Latest job executions</CardDescription>
+            <CardTitle className="text-lg">Cron Jobs</CardTitle>
+            <CardDescription>Scheduled tasks overview</CardDescription>
           </CardHeader>
           <CardContent>
             <ScrollArea className="h-[280px]">
-              {recentRuns.length === 0 ? (
+              {cronJobs.length === 0 ? (
                 <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-                  No cron run history yet
+                  No cron jobs configured
                 </div>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Job</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Time</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {recentRuns.map((run, i) => (
-                      <TableRow key={i}>
-                        <TableCell className="font-medium">{run.jobName}</TableCell>
-                        <TableCell>
-                          <StatusBadge status={run.status} />
-                        </TableCell>
-                        <TableCell className="text-muted-foreground text-sm">
-                          {formatTime(run.timestamp)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                <div className="space-y-3">
+                  {cronJobs.map((job) => (
+                    <div
+                      key={job.id}
+                      className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-sm truncate">{job.name || job.id}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {job.schedule?.kind === "cron" ? job.schedule.expr : job.schedule?.kind === "every" ? `every ${Math.round(job.schedule.everyMs / 60000)}m` : job.schedule?.kind ?? "—"}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0 ml-4">
+                        <Badge variant={job.enabled ? "default" : "secondary"} className="text-xs">
+                          {job.enabled ? "on" : "off"}
+                        </Badge>
+                        {job.state?.lastRunAtMs && (
+                          <span className="text-xs text-muted-foreground">
+                            {formatMs(job.state.lastRunAtMs)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
             </ScrollArea>
           </CardContent>
@@ -141,21 +136,23 @@ export default function OverviewPage() {
                   {sessions.slice(0, 8).map((session) => (
                     <div
                       key={session.key}
-                      className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted/80 transition-colors"
+                      className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
                     >
                       <div className="min-w-0 flex-1">
-                        <p className="font-medium text-sm truncate">{session.key}</p>
+                        <p className="font-medium text-sm truncate">
+                          {session.label || shortKey(session.key)}
+                        </p>
                         <p className="text-xs text-muted-foreground truncate mt-0.5">
-                          {session.lastMessage || "No messages"}
+                          {session.lastChannel || session.channel || "—"}
                         </p>
                       </div>
                       <div className="text-right shrink-0 ml-4">
                         {session.model && (
-                          <p className="text-xs text-muted-foreground">{session.model}</p>
+                          <Badge variant="outline" className="font-mono text-xs">{session.model}</Badge>
                         )}
-                        {session.tokens !== undefined && (
-                          <p className="text-xs text-muted-foreground">
-                            {session.tokens.toLocaleString()} tokens
+                        {session.totalTokens !== undefined && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {session.totalTokens.toLocaleString()} tokens
                           </p>
                         )}
                       </div>

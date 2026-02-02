@@ -4,44 +4,63 @@ export interface GatewayConfig {
 }
 
 export interface GatewayMessage {
-  jsonrpc?: string;
+  type?: string;
   id?: number | string;
   method?: string;
   params?: Record<string, unknown>;
-  result?: unknown;
-  error?: { code: number; message: string; data?: unknown };
+  ok?: boolean;
+  payload?: unknown;
+  error?: { code?: string; message: string };
+  event?: string;
+}
+
+// Cron types matching OpenClaw's real API
+export type CronSchedule =
+  | { kind: "at"; atMs: number }
+  | { kind: "every"; everyMs: number; anchorMs?: number }
+  | { kind: "cron"; expr: string; tz?: string };
+
+export type CronPayload =
+  | { kind: "systemEvent"; text: string }
+  | { kind: "agentTurn"; message: string; model?: string; thinking?: string; timeoutSeconds?: number; deliver?: boolean; channel?: string; to?: string };
+
+export interface CronJobState {
+  lastRunAtMs?: number;
+  lastRunStatus?: string;
+  nextRunAtMs?: number;
 }
 
 export interface CronJob {
+  id: string;
   name: string;
-  schedule: string;
+  description?: string;
   enabled: boolean;
-  lastRun?: string;
-  nextRun?: string;
-  command?: string;
-  config?: Record<string, unknown>;
-  history?: CronRunEntry[];
-}
-
-export interface CronRunEntry {
-  timestamp: string;
-  status: 'success' | 'error' | 'running';
-  duration?: number;
-  error?: string;
+  deleteAfterRun?: boolean;
+  createdAtMs: number;
+  updatedAtMs: number;
+  schedule: CronSchedule;
+  sessionTarget: "main" | "isolated";
+  wakeMode: "next-heartbeat" | "now";
+  payload: CronPayload;
+  state: CronJobState;
 }
 
 export interface Session {
   key: string;
+  kind?: string;
+  channel?: string;
+  label?: string;
+  displayName?: string;
   model?: string;
-  tokens?: number;
-  lastMessage?: string;
-  updatedAt?: string;
-  messages?: SessionMessage[];
+  totalTokens?: number;
+  updatedAt?: number;
+  sessionId?: string;
+  lastChannel?: string;
 }
 
 export interface SessionMessage {
   role: 'user' | 'assistant' | 'system';
-  content: string;
+  content: string | Array<{ type: string; text?: string }>;
   timestamp?: string;
 }
 

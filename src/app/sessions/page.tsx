@@ -2,69 +2,44 @@
 
 import { useState } from "react";
 import { useGateway } from "@/lib/gateway-context";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { RefreshCw, Send, MessageSquare, Bot, User } from "lucide-react";
-import { toast } from "sonner";
-import { cn } from "@/lib/utils";
-import type { Session, SessionMessage } from "@/lib/gateway-types";
+import { RefreshCw, MessageSquare } from "lucide-react";
+import type { Session } from "@/lib/gateway-types";
 
-function formatTime(ts?: string): string {
-  if (!ts) return "—";
+function formatMs(ms?: number): string {
+  if (!ms) return "—";
   try {
-    return new Date(ts).toLocaleString(undefined, {
+    return new Date(ms).toLocaleString(undefined, {
       month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
     });
-  } catch { return ts; }
+  } catch { return "—"; }
+}
+
+function shortKey(key: string): string {
+  // e.g. "agent:main:main" -> "main"
+  // "agent:main:cron:abc-123" -> "cron:abc-12..."
+  const parts = key.split(":");
+  if (parts.length <= 2) return key;
+  const suffix = parts.slice(2).join(":");
+  return suffix.length > 30 ? suffix.slice(0, 30) + "…" : suffix;
 }
 
 export default function SessionsPage() {
   const { sessions, send, refreshSessions } = useGateway();
   const [selected, setSelected] = useState<Session | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [messageInput, setMessageInput] = useState("");
-  const [messages, setMessages] = useState<SessionMessage[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [details, setDetails] = useState<string>("Loading...");
 
   const openSession = async (session: Session) => {
     setSelected(session);
     setSheetOpen(true);
-    setMessages(session.messages || []);
-    try {
-      const result = await send("session.messages", { key: session.key });
-      if (Array.isArray(result)) {
-        setMessages(result as SessionMessage[]);
-      } else if (result && typeof result === "object" && "messages" in (result as Record<string, unknown>)) {
-        setMessages((result as { messages: SessionMessage[] }).messages);
-      }
-    } catch {
-      // Use existing messages
-    }
-  };
-
-  const sendMessage = async () => {
-    if (!messageInput.trim() || !selected) return;
-    setLoading(true);
-    try {
-      await send("session.send", { key: selected.key, message: messageInput.trim() });
-      setMessages((prev) => [
-        ...prev,
-        { role: "user", content: messageInput.trim(), timestamp: new Date().toISOString() },
-      ]);
-      setMessageInput("");
-      toast.success("Message sent");
-      refreshSessions();
-    } catch (e) {
-      toast.error(`Failed to send: ${(e as Error).message}`);
-    } finally {
-      setLoading(false);
-    }
+    setDetails(JSON.stringify(session, null, 2));
   };
 
   return (
@@ -72,7 +47,7 @@ export default function SessionsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Sessions</h1>
-          <p className="text-muted-foreground mt-1">Active conversations and message history</p>
+          <p className="text-muted-foreground mt-1">Active conversations and agents</p>
         </div>
         <Button variant="outline" size="sm" onClick={refreshSessions}>
           <RefreshCw className="w-4 h-4 mr-2" />
@@ -85,10 +60,10 @@ export default function SessionsPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Session Key</TableHead>
+                <TableHead>Session</TableHead>
+                <TableHead>Channel</TableHead>
                 <TableHead>Model</TableHead>
                 <TableHead>Tokens</TableHead>
-                <TableHead>Last Message</TableHead>
                 <TableHead>Updated</TableHead>
               </TableRow>
             </TableHeader>
@@ -109,8 +84,15 @@ export default function SessionsPage() {
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-2">
                         <MessageSquare className="w-4 h-4 text-muted-foreground" />
-                        {session.key}
+                        <span title={session.key}>{session.label || shortKey(session.key)}</span>
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      {session.lastChannel || session.channel ? (
+                        <Badge variant="secondary" className="text-xs">
+                          {session.lastChannel || session.channel}
+                        </Badge>
+                      ) : "—"}
                     </TableCell>
                     <TableCell>
                       {session.model ? (
@@ -118,13 +100,10 @@ export default function SessionsPage() {
                       ) : "—"}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {session.tokens?.toLocaleString() ?? "—"}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-sm max-w-[200px] truncate">
-                      {session.lastMessage || "—"}
+                      {session.totalTokens?.toLocaleString() ?? "—"}
                     </TableCell>
                     <TableCell className="text-muted-foreground text-sm">
-                      {formatTime(session.updatedAt)}
+                      {formatMs(session.updatedAt)}
                     </TableCell>
                   </TableRow>
                 ))
@@ -134,75 +113,24 @@ export default function SessionsPage() {
         </CardContent>
       </Card>
 
-      {/* Session Details Sheet */}
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
         <SheetContent className="w-[500px] sm:w-[640px] flex flex-col">
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
               <MessageSquare className="w-5 h-5" />
-              {selected?.key}
+              {selected?.label || selected?.key}
             </SheetTitle>
             <SheetDescription>
               {selected?.model && <Badge variant="outline" className="mr-2 font-mono text-xs">{selected.model}</Badge>}
-              {selected?.tokens !== undefined && `${selected.tokens.toLocaleString()} tokens`}
+              {selected?.totalTokens !== undefined && `${selected.totalTokens.toLocaleString()} tokens`}
             </SheetDescription>
           </SheetHeader>
-
           <Separator className="my-4" />
-
-          {/* Messages */}
-          <ScrollArea className="flex-1 -mx-6 px-6">
-            <div className="space-y-4 pb-4">
-              {messages.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-8">No messages in this session</p>
-              ) : (
-                messages.map((msg, i) => (
-                  <div key={i} className={cn("flex gap-3", msg.role === "user" && "flex-row-reverse")}>
-                    <div className={cn(
-                      "w-8 h-8 rounded-full flex items-center justify-center shrink-0",
-                      msg.role === "user" ? "bg-gradient-to-br from-gradient-orange to-gradient-pink" : "bg-muted"
-                    )}>
-                      {msg.role === "user" ? (
-                        <User className="w-4 h-4 text-white" />
-                      ) : (
-                        <Bot className="w-4 h-4 text-muted-foreground" />
-                      )}
-                    </div>
-                    <div className={cn(
-                      "max-w-[80%] rounded-xl px-4 py-2.5",
-                      msg.role === "user"
-                        ? "bg-gradient-to-r from-gradient-orange/20 to-gradient-pink/20 text-foreground"
-                        : "bg-muted/80 text-foreground"
-                    )}>
-                      <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                      {msg.timestamp && (
-                        <p className="text-xs text-muted-foreground mt-1">{formatTime(msg.timestamp)}</p>
-                      )}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
+          <ScrollArea className="flex-1">
+            <pre className="text-xs font-mono whitespace-pre-wrap break-all text-muted-foreground">
+              {details}
+            </pre>
           </ScrollArea>
-
-          {/* Send Message */}
-          <div className="flex gap-2 pt-4 border-t border-border/50">
-            <Input
-              placeholder="Send a message..."
-              value={messageInput}
-              onChange={(e) => setMessageInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
-              disabled={loading}
-            />
-            <Button
-              size="sm"
-              onClick={sendMessage}
-              disabled={loading || !messageInput.trim()}
-              className="bg-gradient-to-r from-gradient-orange to-gradient-pink text-white hover:opacity-90 shrink-0"
-            >
-              <Send className="w-4 h-4" />
-            </Button>
-          </div>
         </SheetContent>
       </Sheet>
     </div>
