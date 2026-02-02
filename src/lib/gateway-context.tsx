@@ -3,7 +3,6 @@
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from "react";
 import type {
   GatewayConfig,
-  GatewayMessage,
   ConnectionStatus,
   GatewayStats,
   CronJob,
@@ -50,6 +49,10 @@ function clearStoredConfig() {
   localStorage.removeItem(STORAGE_KEY);
 }
 
+function generateId(): string {
+  return crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 export function GatewayProvider({ children }: { children: React.ReactNode }) {
   const [config, setConfigState] = useState<GatewayConfig | null>(null);
   const [status, setStatus] = useState<ConnectionStatus>("disconnected");
@@ -64,9 +67,13 @@ export function GatewayProvider({ children }: { children: React.ReactNode }) {
   const [rawConfig, setRawConfig] = useState<string>("{}");
 
   const wsRef = useRef<WebSocket | null>(null);
-  const idRef = useRef(0);
-  const pendingRef = useRef<Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>>(new Map());
+  const pendingRef = useRef<Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void }>>(new Map());
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const connectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const connectNonceRef = useRef<string | null>(null);
+  const connectSentRef = useRef(false);
+  const closedRef = useRef(false);
+  const configRef = useRef<GatewayConfig | null>(null);
 
   // Load config from localStorage on mount
   useEffect(() => {
@@ -74,55 +81,149 @@ export function GatewayProvider({ children }: { children: React.ReactNode }) {
     if (stored) setConfigState(stored);
   }, []);
 
+  // Keep configRef in sync
+  useEffect(() => {
+    configRef.current = config;
+  }, [config]);
+
+  const sendFrame = useCallback((ws: WebSocket, frame: Record<string, unknown>) => {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(frame));
+    }
+  }, []);
+
+  const sendConnectRequest = useCallback((ws: WebSocket, cfg: GatewayConfig, nonce?: string | null) => {
+    if (connectSentRef.current) return;
+    connectSentRef.current = true;
+    if (connectTimerRef.current) {
+      clearTimeout(connectTimerRef.current);
+      connectTimerRef.current = null;
+    }
+
+    const id = generateId();
+    const params: Record<string, unknown> = {
+      minProtocol: 3,
+      maxProtocol: 3,
+      client: {
+        id: "clawpilot",
+        version: "1.0.0",
+        platform: typeof navigator !== "undefined" ? navigator.platform ?? "web" : "web",
+        mode: "webchat",
+      },
+      role: "operator",
+      scopes: ["operator.admin", "operator.approvals", "operator.pairing"],
+      caps: [],
+      auth: {
+        token: cfg.token,
+      },
+      userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "ClawPilot/1.0",
+      locale: typeof navigator !== "undefined" ? navigator.language : "en",
+    };
+
+    const frame = { type: "req", id, method: "connect", params };
+
+    const p = new Promise<unknown>((resolve, reject) => {
+      pendingRef.current.set(id, { resolve, reject });
+    });
+
+    sendFrame(ws, frame);
+
+    p.then((hello) => {
+      setStatus("connected");
+      setStats((s) => ({ ...s, connected: true }));
+    }).catch(() => {
+      ws.close(4008, "connect failed");
+    });
+  }, [sendFrame]);
+
   const connect = useCallback((cfg: GatewayConfig) => {
     if (wsRef.current) {
       wsRef.current.close();
     }
 
+    closedRef.current = false;
+    connectSentRef.current = false;
+    connectNonceRef.current = null;
     setStatus("connecting");
 
-    // Build ws URL with token
+    // Clean URL - no query params
     const url = cfg.url.endsWith("/") ? cfg.url.slice(0, -1) : cfg.url;
-    const wsUrl = `${url}?token=${encodeURIComponent(cfg.token)}`;
 
     try {
-      const ws = new WebSocket(wsUrl);
+      const ws = new WebSocket(url);
       wsRef.current = ws;
 
       ws.onopen = () => {
-        setStatus("connected");
-        setStats((s) => ({ ...s, connected: true }));
+        // Wait for connect.challenge event, or send connect after 750ms timeout
+        connectTimerRef.current = setTimeout(() => {
+          sendConnectRequest(ws, cfg, null);
+        }, 750);
       };
 
       ws.onmessage = (event) => {
         try {
-          const msg: GatewayMessage = JSON.parse(event.data);
-          if (msg.id !== undefined) {
-            const pending = pendingRef.current.get(msg.id as number);
-            if (pending) {
-              pendingRef.current.delete(msg.id as number);
-              if (msg.error) {
-                pending.reject(new Error(msg.error.message));
+          const frame = JSON.parse(event.data) as Record<string, unknown>;
+
+          // Handle events
+          if (frame.type === "event") {
+            const evt = frame as { event?: string; payload?: unknown };
+
+            // Connect challenge - gateway sends a nonce
+            if (evt.event === "connect.challenge") {
+              const payload = evt.payload as { nonce?: string } | undefined;
+              if (payload?.nonce) {
+                connectNonceRef.current = payload.nonce;
+                sendConnectRequest(ws, cfg, payload.nonce);
+              }
+              return;
+            }
+
+            // Other events (status updates, etc.)
+            return;
+          }
+
+          // Handle responses
+          if (frame.type === "res") {
+            const res = frame as { id?: string; ok?: boolean; payload?: unknown; error?: { message?: string } };
+            const id = res.id;
+            if (id && pendingRef.current.has(id)) {
+              const pending = pendingRef.current.get(id)!;
+              pendingRef.current.delete(id);
+              if (res.ok) {
+                pending.resolve(res.payload);
               } else {
-                pending.resolve(msg.result);
+                pending.reject(new Error(res.error?.message ?? "request failed"));
               }
             }
+            return;
           }
         } catch {
           // ignore parse errors
         }
       };
 
-      ws.onclose = () => {
+      ws.onclose = (ev) => {
         setStatus("disconnected");
         setStats((s) => ({ ...s, connected: false }));
         wsRef.current = null;
-        // Auto reconnect after 5s
-        if (reconnectRef.current) clearTimeout(reconnectRef.current);
-        reconnectRef.current = setTimeout(() => {
-          const stored = loadConfig();
-          if (stored) connect(stored);
-        }, 5000);
+        if (connectTimerRef.current) {
+          clearTimeout(connectTimerRef.current);
+          connectTimerRef.current = null;
+        }
+        // Flush pending
+        for (const [, p] of pendingRef.current) {
+          p.reject(new Error(`gateway closed (${ev.code}): ${ev.reason}`));
+        }
+        pendingRef.current.clear();
+
+        // Auto reconnect after 5s if not intentionally closed
+        if (!closedRef.current) {
+          if (reconnectRef.current) clearTimeout(reconnectRef.current);
+          reconnectRef.current = setTimeout(() => {
+            const stored = loadConfig();
+            if (stored) connect(stored);
+          }, 5000);
+        }
       };
 
       ws.onerror = () => {
@@ -132,10 +233,12 @@ export function GatewayProvider({ children }: { children: React.ReactNode }) {
     } catch {
       setStatus("error");
     }
-  }, []);
+  }, [sendConnectRequest]);
 
   const disconnect = useCallback(() => {
+    closedRef.current = true;
     if (reconnectRef.current) clearTimeout(reconnectRef.current);
+    if (connectTimerRef.current) clearTimeout(connectTimerRef.current);
     if (wsRef.current) {
       wsRef.current.close();
       wsRef.current = null;
@@ -150,6 +253,7 @@ export function GatewayProvider({ children }: { children: React.ReactNode }) {
     }
     return () => {
       if (reconnectRef.current) clearTimeout(reconnectRef.current);
+      if (connectTimerRef.current) clearTimeout(connectTimerRef.current);
     };
   }, [config, connect]);
 
@@ -160,10 +264,10 @@ export function GatewayProvider({ children }: { children: React.ReactNode }) {
           reject(new Error("Not connected to gateway"));
           return;
         }
-        const id = ++idRef.current;
+        const id = generateId();
         pendingRef.current.set(id, { resolve, reject });
-        const msg: GatewayMessage = { jsonrpc: "2.0", id, method, params };
-        wsRef.current.send(JSON.stringify(msg));
+        const frame = { type: "req", id, method, params };
+        wsRef.current.send(JSON.stringify(frame));
         // Timeout after 30s
         setTimeout(() => {
           if (pendingRef.current.has(id)) {
@@ -188,7 +292,7 @@ export function GatewayProvider({ children }: { children: React.ReactNode }) {
   }, [send]);
 
   const refreshSessions = useCallback(() => {
-    send("session.list")
+    send("sessions.list")
       .then((result) => {
         if (Array.isArray(result)) setSessions(result);
         else if (result && typeof result === "object" && "sessions" in (result as Record<string, unknown>)) {
