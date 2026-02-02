@@ -105,7 +105,7 @@ export function GatewayProvider({ children }: { children: React.ReactNode }) {
       minProtocol: 3,
       maxProtocol: 3,
       client: {
-        id: "clawpilot",
+        id: "openclaw-control-ui",
         version: "1.0.0",
         platform: typeof navigator !== "undefined" ? navigator.platform ?? "web" : "web",
         mode: "webchat",
