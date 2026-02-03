@@ -17,7 +17,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
       <div
         className="theme-ambient-layer fixed inset-0 pointer-events-none overflow-hidden"
         style={{ zIndex: 35 }}
-        aria-hidden
+        aria-hidden="true"
       >
         <ThemeParticles />
       </div>

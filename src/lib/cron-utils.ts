@@ -1,6 +1,19 @@
 import type { CronSchedule, CronPayload } from "./gateway-types";
 
 /**
+ * Format an uptime duration in seconds to a human-readable string.
+ */
+export function formatUptime(seconds: number): string {
+  if (seconds <= 0) return "\u2014";
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+
+/**
  * Parse a cron expression into human-readable English.
  * Handles common patterns; falls back to raw expression for complex ones.
  */

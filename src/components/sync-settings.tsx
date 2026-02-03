@@ -27,7 +27,6 @@ interface SyncSettingsProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   items: WidgetLayoutItem[];
-  send: (method: string, params?: Record<string, unknown>) => Promise<unknown>;
   onLayoutRestored: (items: WidgetLayoutItem[]) => void;
   onReset: () => void;
 }
@@ -127,6 +126,7 @@ export function SyncSettings({
               type="file"
               accept=".json"
               className="hidden"
+              aria-label="Import layout file"
               onChange={handleFileChange}
             />
           </div>

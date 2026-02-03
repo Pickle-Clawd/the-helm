@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from "react";
+import React, { createContext, useContext, useEffect, useRef, useState, useCallback, useMemo } from "react";
 import type {
   GatewayConfig,
   ConnectionStatus,
@@ -18,7 +18,7 @@ interface GatewayContextType {
   rawConfig: string;
   setConfig: (config: GatewayConfig) => void;
   clearConfig: () => void;
-  send: (method: string, params?: Record<string, unknown>) => Promise<unknown>;
+  send: <T = unknown>(method: string, params?: Record<string, unknown>) => Promise<T>;
   refreshCronJobs: () => void;
   refreshSessions: () => void;
   refreshConfig: () => void;
@@ -46,7 +46,7 @@ export function GatewayProvider({ children }: { children: React.ReactNode }) {
   const [rawConfig, setRawConfig] = useState<string>("{}");
 
   const wsRef = useRef<WebSocket | null>(null);
-  const pendingRef = useRef<Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void }>>(new Map());
+  const pendingRef = useRef<Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }>>(new Map());
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const connectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const connectNonceRef = useRef<string | null>(null);
@@ -63,7 +63,7 @@ export function GatewayProvider({ children }: { children: React.ReactNode }) {
           setConfigState(data.gateway);
         }
       })
-      .catch(() => {});
+      .catch((err) => { console.error("[gateway]", err) });
   }, []);
 
   // Keep configRef in sync
@@ -108,7 +108,13 @@ export function GatewayProvider({ children }: { children: React.ReactNode }) {
     const frame = { type: "req", id, method: "connect", params };
 
     const p = new Promise<unknown>((resolve, reject) => {
-      pendingRef.current.set(id, { resolve, reject });
+      const timer = setTimeout(() => {
+        if (pendingRef.current.has(id)) {
+          pendingRef.current.delete(id);
+          reject(new Error("Connect request timed out"));
+        }
+      }, 30000);
+      pendingRef.current.set(id, { resolve, reject, timer });
     });
 
     sendFrame(ws, frame);
@@ -133,6 +139,22 @@ export function GatewayProvider({ children }: { children: React.ReactNode }) {
 
     // Clean URL - no query params
     const url = cfg.url.endsWith("/") ? cfg.url.slice(0, -1) : cfg.url;
+
+    // Validate WebSocket URL
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== "ws:" && parsed.protocol !== "wss:") {
+        setStatus("error");
+        return;
+      }
+      if (parsed.username || parsed.password) {
+        setStatus("error");
+        return;
+      }
+    } catch {
+      setStatus("error");
+      return;
+    }
 
     try {
       const ws = new WebSocket(url);
@@ -173,6 +195,7 @@ export function GatewayProvider({ children }: { children: React.ReactNode }) {
             const id = res.id;
             if (id && pendingRef.current.has(id)) {
               const pending = pendingRef.current.get(id)!;
+              clearTimeout(pending.timer);
               pendingRef.current.delete(id);
               if (res.ok) {
                 pending.resolve(res.payload);
@@ -197,6 +220,7 @@ export function GatewayProvider({ children }: { children: React.ReactNode }) {
         }
         // Flush pending
         for (const [, p] of pendingRef.current) {
+          clearTimeout(p.timer);
           p.reject(new Error(`gateway closed (${ev.code}): ${ev.reason}`));
         }
         pendingRef.current.clear();
@@ -242,23 +266,23 @@ export function GatewayProvider({ children }: { children: React.ReactNode }) {
   }, [config, connect]);
 
   const send = useCallback(
-    (method: string, params?: Record<string, unknown>): Promise<unknown> => {
-      return new Promise((resolve, reject) => {
+    <T = unknown>(method: string, params?: Record<string, unknown>): Promise<T> => {
+      return new Promise<T>((resolve, reject) => {
         if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
           reject(new Error("Not connected to gateway"));
           return;
         }
         const id = generateId();
-        pendingRef.current.set(id, { resolve, reject });
         const frame = { type: "req", id, method, params };
-        wsRef.current.send(JSON.stringify(frame));
         // Timeout after 30s
-        setTimeout(() => {
+        const timer = setTimeout(() => {
           if (pendingRef.current.has(id)) {
             pendingRef.current.delete(id);
             reject(new Error("Request timed out"));
           }
         }, 30000);
+        pendingRef.current.set(id, { resolve: resolve as (v: unknown) => void, reject, timer });
+        wsRef.current.send(JSON.stringify(frame));
       });
     },
     []
@@ -272,7 +296,7 @@ export function GatewayProvider({ children }: { children: React.ReactNode }) {
           setCronJobs((result as { jobs: CronJob[] }).jobs);
         }
       })
-      .catch(() => {});
+      .catch((err) => { console.error("[gateway]", err) });
   }, [send]);
 
   const refreshSessions = useCallback(() => {
@@ -283,7 +307,7 @@ export function GatewayProvider({ children }: { children: React.ReactNode }) {
           setSessions((result as { sessions: Session[] }).sessions);
         }
       })
-      .catch(() => {});
+      .catch((err) => { console.error("[gateway]", err) });
   }, [send]);
 
   const refreshConfig = useCallback(() => {
@@ -291,7 +315,7 @@ export function GatewayProvider({ children }: { children: React.ReactNode }) {
       .then((result) => {
         setRawConfig(JSON.stringify(result, null, 2));
       })
-      .catch(() => {});
+      .catch((err) => { console.error("[gateway]", err) });
   }, [send]);
 
   const refreshStats = useCallback(() => {
@@ -308,7 +332,7 @@ export function GatewayProvider({ children }: { children: React.ReactNode }) {
           }));
         }
       })
-      .catch(() => {});
+      .catch((err) => { console.error("[gateway]", err) });
   }, [send]);
 
   // Auto-refresh data when connected
@@ -334,7 +358,7 @@ export function GatewayProvider({ children }: { children: React.ReactNode }) {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ gateway: cfg }),
-      }).catch(() => {});
+      }).catch((err) => { console.error("[gateway]", err) });
       setConfigState(cfg);
     },
     []
@@ -345,30 +369,32 @@ export function GatewayProvider({ children }: { children: React.ReactNode }) {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ gateway: { url: "", token: "" } }),
-    }).catch(() => {});
+    }).catch((err) => { console.error("[gateway]", err) });
     disconnect();
     setConfigState(null);
   }, [disconnect]);
 
+  const contextValue = useMemo(() => ({
+    config,
+    status,
+    stats,
+    cronJobs,
+    sessions,
+    rawConfig,
+    setConfig,
+    clearConfig,
+    send,
+    refreshCronJobs,
+    refreshSessions,
+    refreshConfig,
+    refreshStats,
+    disconnect,
+  }), [config, status, stats, cronJobs, sessions, rawConfig,
+       setConfig, clearConfig, send, refreshCronJobs,
+       refreshSessions, refreshConfig, refreshStats, disconnect]);
+
   return (
-    <GatewayContext.Provider
-      value={{
-        config,
-        status,
-        stats,
-        cronJobs,
-        sessions,
-        rawConfig,
-        setConfig,
-        clearConfig,
-        send,
-        refreshCronJobs,
-        refreshSessions,
-        refreshConfig,
-        refreshStats,
-        disconnect,
-      }}
-    >
+    <GatewayContext.Provider value={contextValue}>
       {children}
     </GatewayContext.Provider>
   );

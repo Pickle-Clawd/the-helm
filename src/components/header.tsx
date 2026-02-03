@@ -5,15 +5,15 @@ import { Badge } from "@/components/ui/badge";
 import { Wifi, WifiOff, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+const statusConfig = {
+  connected: { label: "Connected", icon: Wifi, className: "bg-success/20 text-success border-success/30" },
+  connecting: { label: "Connecting", icon: Loader2, className: "bg-warning/20 text-warning border-warning/30" },
+  disconnected: { label: "Disconnected", icon: WifiOff, className: "bg-muted text-muted-foreground border-border" },
+  error: { label: "Error", icon: WifiOff, className: "bg-destructive/20 text-destructive border-destructive/30" },
+};
+
 export function Header() {
   const { config, status } = useGateway();
-
-  const statusConfig = {
-    connected: { label: "Connected", icon: Wifi, className: "bg-success/20 text-success border-success/30" },
-    connecting: { label: "Connecting", icon: Loader2, className: "bg-warning/20 text-warning border-warning/30" },
-    disconnected: { label: "Disconnected", icon: WifiOff, className: "bg-muted text-muted-foreground border-border" },
-    error: { label: "Error", icon: WifiOff, className: "bg-destructive/20 text-destructive border-destructive/30" },
-  };
 
   const s = statusConfig[status];
   const StatusIcon = s.icon;

@@ -253,6 +253,9 @@ export default function CronPage() {
                         key={job.id}
                         className={`cursor-pointer hover:bg-muted/50 transition-colors ${!job.enabled ? "opacity-50" : ""}`}
                         onClick={() => openEdit(job)}
+                        tabIndex={0}
+                        role="button"
+                        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openEdit(job); } }}
                       >
                         {/* Enable/Disable toggle */}
                         <TableCell onClick={(e) => e.stopPropagation()}>
@@ -357,6 +360,7 @@ export default function CronPage() {
                                   variant="ghost"
                                   size="icon"
                                   className="h-8 w-8"
+                                  aria-label="Run job now"
                                   onClick={() => triggerJob(job)}
                                 >
                                   <Play className="w-4 h-4" />
@@ -367,7 +371,7 @@ export default function CronPage() {
 
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-8 w-8">
+                                <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="More actions">
                                   <MoreHorizontal className="w-4 h-4" />
                                 </Button>
                               </DropdownMenuTrigger>

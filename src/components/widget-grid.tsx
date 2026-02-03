@@ -34,6 +34,8 @@ import "react-resizable/css/styles.css";
 
 const BREAKPOINTS = { lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 };
 const COLS = { lg: 24, md: 18, sm: 12, xs: 6, xxs: 3 };
+const GRID_MARGIN = [12, 12] as const;
+const GRID_CONTAINER_PADDING = [0, 0] as const;
 
 /** Default layout shown when no saved layout exists */
 function getDefaultLayout(): WidgetLayoutItem[] {
@@ -74,7 +76,10 @@ export function WidgetGrid() {
         setEditMode(savedEditMode);
         setMounted(true);
       }
-    );
+    ).catch(() => {
+      setItems(getDefaultLayout());
+      setMounted(true);
+    });
   }, []);
 
   // Flush any pending save before the page unloads
@@ -239,7 +244,7 @@ export function WidgetGrid() {
             size="icon"
             className="w-8 h-8"
             onClick={() => setSyncOpen(true)}
-            title="Layout Settings"
+            aria-label="Layout settings"
           >
             <Settings2 className="w-4 h-4 text-muted-foreground" />
           </Button>
@@ -319,8 +324,8 @@ export function WidgetGrid() {
             breakpoints={BREAKPOINTS}
             cols={COLS}
             rowHeight={30}
-            margin={[12, 12] as const}
-            containerPadding={[0, 0] as const}
+            margin={GRID_MARGIN}
+            containerPadding={GRID_CONTAINER_PADDING}
             width={width}
             dragConfig={{
               enabled: editMode,
@@ -361,7 +366,7 @@ export function WidgetGrid() {
         open={syncOpen}
         onOpenChange={setSyncOpen}
         items={items}
-        send={send}
+
         onLayoutRestored={persistItems}
         onReset={() => {
           setItems(getDefaultLayout());

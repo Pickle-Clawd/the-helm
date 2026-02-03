@@ -18,8 +18,8 @@ export async function saveLayoutToFile(layout: WidgetLayoutItem[]): Promise<void
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ layout }),
     });
-  } catch (err) {
-    console.warn("[layout-sync] Failed to save layout:", err);
+  } catch {
+    // silent — layout save is best-effort
   }
 }
 
@@ -59,7 +59,11 @@ export async function loadEditModeFromFile(): Promise<boolean> {
 }
 
 export async function resetConfigFile(): Promise<void> {
-  await fetch("/api/config", { method: "DELETE" });
+  try {
+    await fetch("/api/config", { method: "DELETE" });
+  } catch {
+    // silent — config reset is best-effort
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -70,15 +74,31 @@ export function exportLayout(layout: unknown[]): string {
   return JSON.stringify({ version: 1, layout }, null, 2);
 }
 
+function isValidLayoutItem(item: unknown): boolean {
+  if (typeof item !== "object" || item === null) return false;
+  const o = item as Record<string, unknown>;
+  return (
+    typeof o.i === "string" &&
+    typeof o.widgetId === "string" &&
+    typeof o.x === "number" &&
+    typeof o.y === "number" &&
+    typeof o.w === "number" &&
+    typeof o.h === "number"
+  );
+}
+
 export function importLayout(json: string): unknown[] | null {
   try {
     const data = JSON.parse(json);
+    let items: unknown[] | null = null;
     if (data.version === 1 && Array.isArray(data.layout)) {
-      return data.layout;
+      items = data.layout;
+    } else if (Array.isArray(data)) {
+      items = data;
     }
-    // Also accept raw arrays
-    if (Array.isArray(data)) return data;
-    return null;
+    if (!items) return null;
+    const valid = items.filter(isValidLayoutItem);
+    return valid.length > 0 ? valid : null;
   } catch {
     return null;
   }

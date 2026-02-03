@@ -15,6 +15,16 @@ import {
 import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -40,6 +50,9 @@ export default function SessionsPage() {
   const [selected, setSelected] = useState<Session | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [kindFilter, setKindFilter] = useState<KindFilter>("all");
+
+  // Kill confirmation
+  const [sessionToKill, setSessionToKill] = useState<Session | null>(null);
 
   // Detail panel state
   const [messages, setMessages] = useState<SessionMessage[]>([]);
@@ -96,17 +109,22 @@ export default function SessionsPage() {
     fetchHistory(session.key);
   };
 
-  const killSession = async (session: Session, e: React.MouseEvent) => {
+  const confirmKillSession = (session: Session, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm(`Kill session "${session.label || session.key}"?`)) return;
+    setSessionToKill(session);
+  };
+
+  const handleKillSession = async () => {
+    if (!sessionToKill) return;
     try {
-      await send("sessions.delete", { key: session.key });
-      toast.success(`Killed ${session.label || session.key}`);
+      await send("sessions.delete", { key: sessionToKill.key });
+      toast.success(`Killed ${sessionToKill.label || sessionToKill.key}`);
       refreshSessions();
-      if (selected?.key === session.key) setSheetOpen(false);
+      if (selected?.key === sessionToKill.key) setSheetOpen(false);
     } catch (err) {
       toast.error(`Failed: ${(err as Error).message}`);
     }
+    setSessionToKill(null);
   };
 
   const sendMessage = async () => {
@@ -209,6 +227,9 @@ export default function SessionsPage() {
                           main ? "border-l-2 border-l-emerald-500/50 bg-emerald-500/[0.03]" : ""
                         }`}
                         onClick={() => openSession(session)}
+                        tabIndex={0}
+                        role="button"
+                        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openSession(session); } }}
                       >
                         {/* Session name */}
                         <TableCell className="font-medium">
@@ -324,7 +345,7 @@ export default function SessionsPage() {
                             variant="ghost"
                             size="sm"
                             className="opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive hover:bg-destructive/10"
-                            onClick={(e) => killSession(session, e)}
+                            onClick={(e) => confirmKillSession(session, e)}
                             title="Kill session"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -338,6 +359,28 @@ export default function SessionsPage() {
             </Table>
           </CardContent>
         </Card>
+
+        {/* Kill Confirmation */}
+        <AlertDialog open={!!sessionToKill} onOpenChange={(open) => !open && setSessionToKill(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Kill session?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will terminate &ldquo;{sessionToKill?.label || sessionToKill?.key}&rdquo;.
+                This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleKillSession}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Kill Session
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         {/* Detail Sheet */}
         <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>

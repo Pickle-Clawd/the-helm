@@ -3,6 +3,7 @@
 import { getWidget } from "@/lib/widget-registry";
 import { GripVertical, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { WidgetErrorBoundary } from "./widget-error-boundary";
 
 interface WidgetWrapperProps {
   instanceId: string;
@@ -54,6 +55,7 @@ export function WidgetWrapper({
               e.stopPropagation();
               onRemove();
             }}
+            aria-label="Remove widget"
             className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors shrink-0"
           >
             <X className="w-3.5 h-3.5" />
@@ -63,7 +65,9 @@ export function WidgetWrapper({
 
       {/* Widget content */}
       <div className="flex-1 overflow-hidden" style={{ containerType: "inline-size" }}>
-        <Component instanceId={instanceId} editMode={editMode} />
+        <WidgetErrorBoundary>
+          <Component instanceId={instanceId} editMode={editMode} />
+        </WidgetErrorBoundary>
       </div>
     </div>
   );

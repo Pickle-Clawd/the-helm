@@ -1,14 +1,9 @@
 "use client";
 
 import { useGateway } from "@/lib/gateway-context";
+import { shortKey } from "@/lib/session-utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-
-function shortKey(key: string): string {
-  const parts = key.split(":");
-  if (parts.length <= 2) return key;
-  return parts.slice(2).join(":");
-}
 
 export function ActiveSessionsWidget() {
   const { sessions } = useGateway();

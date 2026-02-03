@@ -72,6 +72,11 @@ const STORAGE_KEY = "the-helm-theme";
 const DEFAULT_THEME = "midnight";
 const STYLE_TAG_ID = "theme-custom-styles";
 
+/** Validate that a theme ID contains only safe characters (lowercase alphanumeric + hyphens) */
+function isValidThemeId(id: string): boolean {
+  return /^[a-z0-9][a-z0-9-]*$/.test(id);
+}
+
 /* ------------------------------------------------------------------ */
 /*  Context                                                            */
 /* ------------------------------------------------------------------ */
@@ -104,6 +109,8 @@ async function injectStyles(themeId: string) {
   const existing = document.getElementById(STYLE_TAG_ID);
   if (existing) existing.remove();
 
+  if (!isValidThemeId(themeId)) return;
+
   try {
     const res = await fetch(`/themes/${themeId}/styles.css`);
     if (!res.ok) return;
@@ -133,7 +140,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     // Immediately apply stored theme id to data-theme (before fetch completes)
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
+    if (stored && isValidThemeId(stored)) {
       setThemeId(stored);
       document.documentElement.setAttribute("data-theme", stored);
     }
@@ -163,6 +170,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   // Apply theme whenever themeId changes (after initial load)
   const setTheme = useCallback(
     (newId: string) => {
+      if (!isValidThemeId(newId)) return;
       const def = themes.find((t) => t.id === newId);
       if (!def) return;
 
